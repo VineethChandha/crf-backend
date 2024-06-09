@@ -1,0 +1,483 @@
+import validator from "validator";
+import Customer from "../models/Customer.js";
+import RewardPoint from "../models/RewardPoints.js";
+import CustomerLog from "../models/CustomerLogs.js";
+import mongoose from "mongoose";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { createObjectCsvStringifier, createObjectCsvWriter } from "csv-writer";
+import nodemailer from "nodemailer";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASSWORD,
+  },
+});
+
+export const addCustomer = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const {
+      restaurantId,
+      email,
+      firstName,
+      lastName,
+      gender,
+      dob,
+      phoneNumber,
+      address,
+      city,
+      state,
+      zipCode,
+      agreePromotionalEmails,
+      agreeDataSharing,
+    } = req.body;
+
+    if (
+      !restaurantId ||
+      !email ||
+      !firstName ||
+      !lastName ||
+      !gender ||
+      !dob ||
+      !phoneNumber ||
+      !address ||
+      !city ||
+      !state ||
+      !zipCode
+    ) {
+      return res.status(400).json({ error: "All fields are required." });
+    }
+
+    if (!validator.isEmail(email)) {
+      return res.status(400).json({ error: "Invalid email format." });
+    }
+
+    const customer = await Customer.create({
+      restaurantId,
+      email,
+      firstName,
+      lastName,
+      gender,
+      dob,
+      phoneNumber,
+      address,
+      city,
+      state,
+      zipCode,
+      agreePromotionalEmails,
+      agreeDataSharing,
+    });
+
+    await CustomerLog.create({
+      customerId: customer._id,
+      restaurantId,
+      action: "signUp",
+      details: "Signed up the user",
+    });
+
+    await session.commitTransaction();
+    session.endSession();
+    return res.status(200).json({
+      message: "Added customer successfully",
+      customer: customer,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.log(error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+export const addReward = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { customerId, restaurantId, points, type, email } = req.body;
+    if (!customerId || !restaurantId || !points || !type) {
+      return res.status(400).json({ error: "All fields are required." });
+    }
+
+    const totalPoints = await RewardPoint.aggregate([
+      { $match: { customerId: mongoose.Types.ObjectId(customerId) } },
+      { $group: { _id: "$customerId", totalPoints: { $sum: "$points" } } },
+    ]);
+
+    const currentPoints =
+      totalPoints.length > 0 ? totalPoints[0].totalPoints : 0;
+
+    if (type === "redeem" && currentPoints < points) {
+      await session.abortTransaction();
+      session.endSession();
+      return res
+        .status(400)
+        .json({ error: "Not enough reward points to redeem." });
+    }
+
+    const reward = await RewardPoint.create(
+      [
+        {
+          customerId,
+          restaurantId,
+          points: type === "add" ? points : -points,
+          type,
+        },
+      ],
+      { session }
+    );
+
+    await CustomerLog.create(
+      [
+        {
+          customerId,
+          restaurantId,
+          action: type === "add" ? "addPoints" : "redeemPoints",
+          details: type === "add" ? "Added reward points" : "Redeemed points",
+        },
+      ],
+      { session }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
+    console.log(email);
+    const subject = type === "add" ? "Rewards Added" : "Rewards Redeemed";
+    const text =
+      type === "add"
+        ? "Reward points are credited to your account"
+        : "Reward points are redeemed from your account";
+    const mailOptions = {
+      from: process.env.SMTP_USER,
+      to: email,
+      subject: subject,
+      text: text,
+    };
+
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        console.log(error);
+        res.status(500).send("Error sending email");
+      } else {
+        console.log("Email sent: " + info.response);
+        res.send("Email sent successfully");
+      }
+    });
+
+    return res.status(200).json({
+      message: "Reward added successfully",
+      reward: reward,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.log(error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getCustomerProfile = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const customer = await Customer.findById(id).lean();
+
+    if (!customer) {
+      return res.status(404).json({ error: "Customer not found" });
+    }
+
+    const rewardPoints = await RewardPoint.aggregate([
+      { $match: { customerId: mongoose.Types.ObjectId(id) } },
+      {
+        $group: {
+          _id: "$type",
+          totalPoints: { $sum: "$points" },
+        },
+      },
+    ]);
+
+    const totalAddedPoints =
+      rewardPoints.find((rp) => rp._id[0] === "add")?.totalPoints || 0;
+    const totalRedeemedPoints =
+      rewardPoints.find((rp) => rp._id[0] === "redeem")?.totalPoints || 0;
+    const availablePoints = totalAddedPoints - totalRedeemedPoints;
+
+    return res.status(200).json({
+      message: "Fetched customer data successfully",
+      customer: {
+        ...customer,
+        totalPoints: availablePoints,
+        totalAddedPoints,
+        totalRedeemedPoints,
+      },
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+// removing customer from the reward system
+export const deleteCustomer = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { id } = req.params;
+    await RewardPoint.deleteMany({ customerId: id });
+
+    await Customer.deleteOne({ _id: id });
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.status(200).json({
+      message: "User removed from the reward program",
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.log(error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getCustomerLogs = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { id } = req.params;
+    const { page = 1, limit = 10 } = req.body;
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+
+    const totalLogs = await CustomerLog.countDocuments({ customerId: id });
+
+    const logs = await CustomerLog.find({ customerId: id })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.status(200).json({
+      message: "Fetched logs successfully",
+      total: totalLogs,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(totalLogs / limitNum),
+      data: logs,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.log(error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+export const getRewardPoints = async (req, res) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  try {
+    const { page = 1, limit = 10, id } = req.body;
+    const pageNum = parseInt(page, 10);
+    const limitNum = parseInt(limit, 10);
+
+    const totalRewards = await RewardPoint.countDocuments({ customerId: id });
+
+    const rewards = await RewardPoint.find({ customerId: id })
+      .skip((pageNum - 1) * limitNum)
+      .limit(limitNum);
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.status(200).json({
+      message: "Rewards fetched successfully",
+      total: totalRewards,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(totalRewards / limitNum),
+      data: rewards,
+    });
+  } catch (error) {
+    await session.abortTransaction();
+    session.endSession();
+    console.log(error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+export const downloadCustomerData = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const customer = await Customer.findById(id).lean();
+    if (!customer) {
+      return res.status(404).json({ error: "Customer not found" });
+    }
+
+    const rewardPoints = await RewardPoint.aggregate([
+      { $match: { customerId: mongoose.Types.ObjectId(id) } },
+      {
+        $group: {
+          _id: "$type",
+          totalPoints: { $sum: "$points" },
+        },
+      },
+    ]);
+    const totalPoints =
+      rewardPoints.find((rp) => rp._id[0] === "add")?.totalPoints || 0;
+    const redeemedPoints =
+      rewardPoints.find((rp) => rp._id[0] === "redeem")?.totalPoints || 0;
+
+    const customerData = {
+      firstName: customer.firstName,
+      lastName: customer.lastName,
+      email: customer.email,
+      phoneNumber: customer.phoneNumber,
+      totalPoints: totalPoints,
+      redeemedPoints: redeemedPoints,
+    };
+
+    const filePath = path.join(__dirname, `${id}_data.csv`);
+
+    const csvWriter = createObjectCsvWriter({
+      path: filePath,
+      header: [
+        { id: "firstName", title: "First Name" },
+        { id: "lastName", title: "Last Name" },
+        { id: "email", title: "Email" },
+        { id: "phoneNumber", title: "Phone Number" },
+        { id: "totalPoints", title: "Total Points" },
+        { id: "redeemedPoints", title: "Redeemed Points" },
+      ],
+    });
+
+    await csvWriter.writeRecords([customerData]);
+
+    res.download(filePath, `${id}_data.csv`, (err) => {
+      if (err) {
+        console.error("Error downloading file:", err);
+        res.status(500).send("Error downloading file");
+      } else {
+        fs.unlinkSync(filePath);
+      }
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+export const downloadCustomerLogs = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const customerLogs = await CustomerLog.find({ customerId: id })
+      .populate("restaurantId", "restaurantName")
+      .lean();
+    if (customerLogs.length === 0) {
+      return res.status(404).json({ error: "No logs found for this customer" });
+    }
+
+    const logsWithRestaurantName = customerLogs.map((log) => ({
+      restaurantName: log.restaurantId.restaurantName,
+      action: log.action,
+      details: log.details,
+      timestamp: new Date(log.timestamp).toDateString(),
+    }));
+
+    const filePath = path.join(__dirname, `${id}_logs.csv`);
+
+    const csvWriter = createObjectCsvWriter({
+      path: filePath,
+      header: [
+        { id: "restaurantName", title: "Restaurant Name" },
+        { id: "action", title: "Action" },
+        { id: "details", title: "Details" },
+        { id: "timestamp", title: "Timestamp" },
+      ],
+    });
+
+    await csvWriter.writeRecords(logsWithRestaurantName);
+
+    res.download(filePath, `${id}_logs.csv`, (err) => {
+      if (err) {
+        console.error("Error downloading file:", err);
+        res.status(500).send("Error downloading file");
+      } else {
+        fs.unlinkSync(filePath);
+      }
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+export const editCustomer = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      firstName,
+      lastName,
+      gender,
+      dob,
+      phoneNumber,
+      email,
+      address,
+      city,
+      state,
+      zipCode,
+    } = req.body;
+
+    const customer = await Customer.findById(id);
+    if (!customer) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
+    if (firstName) customer.firstName = firstName;
+    if (lastName) customer.lastName = lastName;
+    if (gender) customer.gender = gender;
+    if (dob) customer.dob = dob;
+    if (phoneNumber) customer.phoneNumber = phoneNumber;
+    if (email) customer.email = email;
+    if (address) customer.address = address;
+    if (city) customer.city = city;
+    if (state) customer.state = state;
+    if (zipCode) customer.zipCode = zipCode;
+
+    await customer.save();
+
+    return res.status(200).json({
+      message: "Edit customer successfully",
+      customer,
+    });
+  } catch (error) {
+    console.log(error);
+    return res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
