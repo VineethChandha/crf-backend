@@ -3,14 +3,14 @@ import Customer from "../models/Customer.js";
 import RewardPoint from "../models/RewardPoints.js";
 import CustomerLog from "../models/CustomerLogs.js";
 import mongoose from "mongoose";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
-import { createObjectCsvStringifier, createObjectCsvWriter } from "csv-writer";
+// import fs from "fs";
+// import path from "path";
+// import { fileURLToPath } from "url";
+// import { createObjectCsvStringifier, createObjectCsvWriter } from "csv-writer";
 import nodemailer from "nodemailer";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// const __filename = fileURLToPath(import.meta.url);
+// const __dirname = path.dirname(__filename);
 
 const transporter = nodemailer.createTransport({
   service: "gmail",
@@ -58,6 +58,22 @@ export const addCustomer = async (req, res) => {
 
     if (!validator.isEmail(email)) {
       return res.status(400).json({ error: "Invalid email format." });
+    }
+
+    const exisitngCusEmail = await Customer.findOne({
+      email: email,
+      restaurantId: restaurantId,
+    });
+
+    const exisitngCusPhone = await Customer.findOne({
+      phoneNumber: phoneNumber,
+      restaurantId: restaurantId,
+    });
+
+    if (exisitngCusEmail || exisitngCusPhone) {
+      return res
+        .status(400)
+        .json({ error: "Customer with this email or phone already exists!" });
     }
 
     const customer = await Customer.create({
@@ -302,7 +318,8 @@ export const getRewardPoints = async (req, res) => {
 
     const rewards = await RewardPoint.find({ customerId: id })
       .skip((pageNum - 1) * limitNum)
-      .limit(limitNum);
+      .limit(limitNum)
+      .sort({ createdAt: "desc" });
 
     await session.commitTransaction();
     session.endSession();
@@ -325,116 +342,116 @@ export const getRewardPoints = async (req, res) => {
   }
 };
 
-export const downloadCustomerData = async (req, res) => {
-  try {
-    const { id } = req.params;
-    const customer = await Customer.findById(id).lean();
-    if (!customer) {
-      return res.status(404).json({ error: "Customer not found" });
-    }
+// export const downloadCustomerData = async (req, res) => {
+//   try {
+//     const { id } = req.params;
+//     const customer = await Customer.findById(id).lean();
+//     if (!customer) {
+//       return res.status(404).json({ error: "Customer not found" });
+//     }
 
-    const rewardPoints = await RewardPoint.aggregate([
-      { $match: { customerId: mongoose.Types.ObjectId(id) } },
-      {
-        $group: {
-          _id: "$type",
-          totalPoints: { $sum: "$points" },
-        },
-      },
-    ]);
-    const totalPoints =
-      rewardPoints.find((rp) => rp._id[0] === "add")?.totalPoints || 0;
-    const redeemedPoints =
-      rewardPoints.find((rp) => rp._id[0] === "redeem")?.totalPoints || 0;
+//     const rewardPoints = await RewardPoint.aggregate([
+//       { $match: { customerId: mongoose.Types.ObjectId(id) } },
+//       {
+//         $group: {
+//           _id: "$type",
+//           totalPoints: { $sum: "$points" },
+//         },
+//       },
+//     ]);
+//     const totalPoints =
+//       rewardPoints.find((rp) => rp._id[0] === "add")?.totalPoints || 0;
+//     const redeemedPoints =
+//       rewardPoints.find((rp) => rp._id[0] === "redeem")?.totalPoints || 0;
 
-    const customerData = {
-      firstName: customer.firstName,
-      lastName: customer.lastName,
-      email: customer.email,
-      phoneNumber: customer.phoneNumber,
-      totalPoints: totalPoints,
-      redeemedPoints: redeemedPoints,
-    };
+//     const customerData = {
+//       firstName: customer.firstName,
+//       lastName: customer.lastName,
+//       email: customer.email,
+//       phoneNumber: customer.phoneNumber,
+//       totalPoints: totalPoints,
+//       redeemedPoints: redeemedPoints,
+//     };
 
-    const filePath = path.join(__dirname, `${id}_data.csv`);
+//     const filePath = path.join(__dirname, `${id}_data.csv`);
 
-    const csvWriter = createObjectCsvWriter({
-      path: filePath,
-      header: [
-        { id: "firstName", title: "First Name" },
-        { id: "lastName", title: "Last Name" },
-        { id: "email", title: "Email" },
-        { id: "phoneNumber", title: "Phone Number" },
-        { id: "totalPoints", title: "Total Points" },
-        { id: "redeemedPoints", title: "Redeemed Points" },
-      ],
-    });
+//     const csvWriter = createObjectCsvWriter({
+//       path: filePath,
+//       header: [
+//         { id: "firstName", title: "First Name" },
+//         { id: "lastName", title: "Last Name" },
+//         { id: "email", title: "Email" },
+//         { id: "phoneNumber", title: "Phone Number" },
+//         { id: "totalPoints", title: "Total Points" },
+//         { id: "redeemedPoints", title: "Redeemed Points" },
+//       ],
+//     });
 
-    await csvWriter.writeRecords([customerData]);
+//     await csvWriter.writeRecords([customerData]);
 
-    res.download(filePath, `${id}_data.csv`, (err) => {
-      if (err) {
-        console.error("Error downloading file:", err);
-        res.status(500).send("Error downloading file");
-      } else {
-        fs.unlinkSync(filePath);
-      }
-    });
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json({
-      message: "Internal server error",
-    });
-  }
-};
+//     res.download(filePath, `${id}_data.csv`, (err) => {
+//       if (err) {
+//         console.error("Error downloading file:", err);
+//         res.status(500).send("Error downloading file");
+//       } else {
+//         fs.unlinkSync(filePath);
+//       }
+//     });
+//   } catch (error) {
+//     console.log(error);
+//     return res.status(500).json({
+//       message: "Internal server error",
+//     });
+//   }
+// };
 
-export const downloadCustomerLogs = async (req, res) => {
-  try {
-    const { id } = req.params;
+// export const downloadCustomerLogs = async (req, res) => {
+//   try {
+//     const { id } = req.params;
 
-    const customerLogs = await CustomerLog.find({ customerId: id })
-      .populate("restaurantId", "restaurantName")
-      .lean();
-    if (customerLogs.length === 0) {
-      return res.status(404).json({ error: "No logs found for this customer" });
-    }
+//     const customerLogs = await CustomerLog.find({ customerId: id })
+//       .populate("restaurantId", "restaurantName")
+//       .lean();
+//     if (customerLogs.length === 0) {
+//       return res.status(404).json({ error: "No logs found for this customer" });
+//     }
 
-    const logsWithRestaurantName = customerLogs.map((log) => ({
-      restaurantName: log.restaurantId.restaurantName,
-      action: log.action,
-      details: log.details,
-      timestamp: new Date(log.timestamp).toDateString(),
-    }));
+//     const logsWithRestaurantName = customerLogs.map((log) => ({
+//       restaurantName: log.restaurantId.restaurantName,
+//       action: log.action,
+//       details: log.details,
+//       timestamp: new Date(log.timestamp).toDateString(),
+//     }));
 
-    const filePath = path.join(__dirname, `${id}_logs.csv`);
+//     const filePath = path.join(__dirname, `${id}_logs.csv`);
 
-    const csvWriter = createObjectCsvWriter({
-      path: filePath,
-      header: [
-        { id: "restaurantName", title: "Restaurant Name" },
-        { id: "action", title: "Action" },
-        { id: "details", title: "Details" },
-        { id: "timestamp", title: "Timestamp" },
-      ],
-    });
+//     const csvWriter = createObjectCsvWriter({
+//       path: filePath,
+//       header: [
+//         { id: "restaurantName", title: "Restaurant Name" },
+//         { id: "action", title: "Action" },
+//         { id: "details", title: "Details" },
+//         { id: "timestamp", title: "Timestamp" },
+//       ],
+//     });
 
-    await csvWriter.writeRecords(logsWithRestaurantName);
+//     await csvWriter.writeRecords(logsWithRestaurantName);
 
-    res.download(filePath, `${id}_logs.csv`, (err) => {
-      if (err) {
-        console.error("Error downloading file:", err);
-        res.status(500).send("Error downloading file");
-      } else {
-        fs.unlinkSync(filePath);
-      }
-    });
-  } catch (error) {
-    console.log(error);
-    return res.status(500).json({
-      message: "Internal server error",
-    });
-  }
-};
+//     res.download(filePath, `${id}_logs.csv`, (err) => {
+//       if (err) {
+//         console.error("Error downloading file:", err);
+//         res.status(500).send("Error downloading file");
+//       } else {
+//         fs.unlinkSync(filePath);
+//       }
+//     });
+//   } catch (error) {
+//     console.log(error);
+//     return res.status(500).json({
+//       message: "Internal server error",
+//     });
+//   }
+// };
 
 export const editCustomer = async (req, res) => {
   try {
