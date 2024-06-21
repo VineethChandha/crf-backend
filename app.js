@@ -26,12 +26,15 @@ import authRoutes from "./routes/authRoutes.js";
 import commonRoutes from "./routes/commonRoutes.js";
 
 // middlewares
-import verifyUser from "./middlewares/authMiddleware.cjs";
+import {
+  verifyUser,
+  verifyProductAdmin,
+} from "./middlewares/authMiddleware.cjs";
 
 // router middleware
 app.use("/api/v1/common", verifyUser, commonRoutes);
 app.use("/api/v1/auth", authRoutes);
-app.use("/api/v1/productAdmin", verifyUser, productAdminRoutes);
+app.use("/api/v1/productAdmin", verifyProductAdmin, productAdminRoutes);
 app.use("/api/v1/restaurantAdmin", verifyUser, restaurantAdminRoutes);
 
 export default app;

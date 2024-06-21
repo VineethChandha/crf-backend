@@ -55,9 +55,13 @@ productAdminSchema.methods.isValidatedPassword = async function (
 
 // create and return jwt token
 productAdminSchema.methods.getJwtToken = function () {
-  return jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
-    expiresIn: "9h",
-  });
+  return jwt.sign(
+    { id: this._id, role: "productAdmin" },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "9h",
+    }
+  );
 };
 
 // generate forget password token (string)

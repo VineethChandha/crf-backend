@@ -67,9 +67,13 @@ restaurantAdminSchema.methods.isValidatedPassword = async function (
 
 // create and return jwt token
 restaurantAdminSchema.methods.getJwtToken = function () {
-  return jwt.sign({ id: this._id }, process.env.JWT_SECRET, {
-    expiresIn: "9h",
-  });
+  return jwt.sign(
+    { id: this._id, role: "restaurantAdmin" },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: "9h",
+    }
+  );
 };
 
 // generate forget password token (string)
