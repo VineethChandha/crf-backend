@@ -215,9 +215,9 @@ export const getRestaurantCustomers = async (req, res) => {
         ]);
 
         const totalAddedPoints =
-          rewardPoints.find((rp) => rp._id === "add")?.totalPoints || 0;
+          rewardPoints.find((rp) => rp._id[0] === "add")?.totalPoints || 0;
         const totalRedeemedPoints =
-          rewardPoints.find((rp) => rp._id === "redeem")?.totalPoints || 0;
+          rewardPoints.find((rp) => rp._id[0] === "redeem")?.totalPoints || 0;
         const availablePoints = totalAddedPoints + totalRedeemedPoints;
 
         return {
