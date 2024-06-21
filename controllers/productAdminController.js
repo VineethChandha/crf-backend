@@ -198,23 +198,52 @@ export const getRestaurantCustomers = async (req, res) => {
     const totalCustomers = await Customer.countDocuments(queryObj);
     const customers = await Customer.find(queryObj)
       .skip((pageNum - 1) * limitNum)
-      .limit(limitNum);
+      .limit(limitNum)
+      .lean();
+
+    // Fetch reward points for each customer
+    const customersWithPoints = await Promise.all(
+      customers.map(async (customer) => {
+        const rewardPoints = await RewardPoint.aggregate([
+          { $match: { customerId: mongoose.Types.ObjectId(customer._id) } },
+          {
+            $group: {
+              _id: "$type",
+              totalPoints: { $sum: "$points" },
+            },
+          },
+        ]);
+
+        const totalAddedPoints =
+          rewardPoints.find((rp) => rp._id === "add")?.totalPoints || 0;
+        const totalRedeemedPoints =
+          rewardPoints.find((rp) => rp._id === "redeem")?.totalPoints || 0;
+        const availablePoints = totalAddedPoints + totalRedeemedPoints;
+
+        return {
+          ...customer,
+          totalPoints: availablePoints,
+          totalAddedPoints,
+          totalRedeemedPoints,
+        };
+      })
+    );
 
     await session.commitTransaction();
     session.endSession();
 
     return res.status(200).json({
-      message: "Fetched restaurants successfully",
+      message: "Fetched restaurant customers successfully",
       total: totalCustomers,
       page: pageNum,
       limit: limitNum,
       totalPages: Math.ceil(totalCustomers / limitNum),
-      data: customers,
+      data: customersWithPoints,
     });
   } catch (error) {
     await session.abortTransaction();
     session.endSession();
-    console.log(error);
+    console.error("Error fetching restaurant customers:", error);
     return res.status(500).json({
       message: "Internal server error",
     });

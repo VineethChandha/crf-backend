@@ -219,7 +219,7 @@ export const getCustomerProfile = async (req, res) => {
       rewardPoints.find((rp) => rp._id[0] === "add")?.totalPoints || 0;
     const totalRedeemedPoints =
       rewardPoints.find((rp) => rp._id[0] === "redeem")?.totalPoints || 0;
-    const availablePoints = totalAddedPoints - totalRedeemedPoints;
+    const availablePoints = totalAddedPoints + totalRedeemedPoints;
 
     return res.status(200).json({
       message: "Fetched customer data successfully",
