@@ -59,7 +59,18 @@ export const createRestaurant = async (req, res) => {
         .json({ error: "Phone number should be exactly 10 characters long." });
     }
 
-    const newRestaurant = Restaurant.create({
+    const existingRestaurant = await Restaurant.findOne({
+      phoneNumber: phoneNumber,
+    });
+    const existingRestaurantEmail = await Restaurant.findOne({ email: email });
+
+    if (existingRestaurant || existingRestaurantEmail) {
+      return res
+        .status(400)
+        .json({ error: "Restaurant with this email or phone already exists!" });
+    }
+
+    const newRestaurant = await Restaurant.create({
       restaurantName,
       address,
       llc,

@@ -193,7 +193,7 @@ export const createRestaurant = async (req, res) => {
         .json({ error: "Restaurant with this email or phone already exists!" });
     }
 
-    const newRestaurant = Restaurant.create({
+    const newRestaurant = await Restaurant.create({
       restaurantName,
       address,
       llc,
@@ -216,6 +216,7 @@ export const createRestaurant = async (req, res) => {
     console.log(error);
     return res.status(500).json({
       message: "Internal server error",
+      error: error,
     });
   }
 };
