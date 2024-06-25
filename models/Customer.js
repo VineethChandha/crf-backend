@@ -42,7 +42,7 @@ const customerSchema = new mongoose.Schema(
       type: String,
       required: [true, "Please provide an email"],
       validate: [validator.isEmail, "Please enter email in correct format"],
-      unique: true,
+      // unique: true,
     },
     address: {
       type: String,
