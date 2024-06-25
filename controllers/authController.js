@@ -60,6 +60,8 @@ export const validateProductAdmin = async (req, res) => {
 
       const token = productAdmin.getJwtToken();
 
+      delete productAdmin.password;
+
       return res.status(200).json({
         success: true,
         message: "User validated successfully",
@@ -112,6 +114,8 @@ export const validateRestaurantAdmin = async (req, res) => {
         }
 
         const token = restaurantAdmin.getJwtToken();
+
+        delete restaurantAdmin.password;
 
         return res.status(200).json({
           success: true,
