@@ -183,7 +183,10 @@ export const addReward = async (req, res) => {
     });
 
     return res.status(200).json({
-      message: "Reward added successfully",
+      message:
+        type === "add"
+          ? "Reward points are credited to your account"
+          : "Reward points are redeemed from your account",
       reward: reward,
     });
   } catch (error) {
