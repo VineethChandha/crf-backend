@@ -26,8 +26,8 @@ const productAdminSchema = new mongoose.Schema(
     phone: {
       type: String,
       required: true,
-      minlength: [10, "Phone number should be of atleast 10 characters."],
-      maxlength: [10, "Phone number should be of at max 10 characters."],
+      // minlength: [10, "Phone number should be of atleast 10 characters."],
+      // maxlength: [10, "Phone number should be of at max 10 characters."],
     },
     forgotPasswordToken: String,
     forgotPasswordExpiry: Date,

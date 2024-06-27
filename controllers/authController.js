@@ -180,11 +180,11 @@ export const createRestaurant = async (req, res) => {
         .json({ error: "Invalid primary contact email format." });
     }
 
-    if (!validator.isLength(phoneNumber, { min: 10, max: 10 })) {
-      return res
-        .status(400)
-        .json({ error: "Phone number should be exactly 10 characters long." });
-    }
+    // if (!validator.isLength(phoneNumber, { min: 10, max: 10 })) {
+    //   return res
+    //     .status(400)
+    //     .json({ error: "Phone number should be exactly 10 characters long." });
+    // }
 
     const existingRestaurant = await Restaurant.findOne({
       phoneNumber: phoneNumber,
