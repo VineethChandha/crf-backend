@@ -163,8 +163,12 @@ export const addReward = async (req, res) => {
     const subject = type === "add" ? "Rewards Added" : "Rewards Redeemed";
     const text =
       type === "add"
-        ? "Reward points are credited to your account"
-        : "Reward points are redeemed from your account";
+        ? `${points} reward points are credited to your account.Total available reward points are: ${
+            currentPoints + points
+          }.`
+        : `${points} reward points are redeemed from your account.Total available reward points are: ${
+            currentPoints - points
+          }.`;
     const mailOptions = {
       from: process.env.SMTP_USER,
       to: email,
