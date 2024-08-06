@@ -11,6 +11,8 @@ const transporter = nodemailer.createTransport({
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASSWORD,
   },
+  secure: true,
+  port: 465,
 });
 
 export const addCustomer = async (req, res) => {
@@ -164,10 +166,10 @@ export const addReward = async (req, res) => {
     const text =
       type === "add"
         ? `${points} reward points are credited to your account.Total available reward points are: ${
-            currentPoints + points
+            Number(currentPoints) + Number(points)
           }.`
         : `${points} reward points are redeemed from your account.Total available reward points are: ${
-            currentPoints - points
+            Number(currentPoints) - Number(points)
           }.`;
     const mailOptions = {
       from: process.env.SMTP_USER,
