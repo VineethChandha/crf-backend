@@ -13,6 +13,7 @@ const transporter = nodemailer.createTransport({
   },
   secure: true,
   port: 465,
+  secureConnection: true,
 });
 
 export const addCustomer = async (req, res) => {
